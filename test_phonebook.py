@@ -101,6 +101,18 @@ class TestPhonebook(unittest.TestCase):
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['unrecognized_field'])
 
+    def test_malformed_data(self):
+        '''Test malformed POST data, e.g. non-numeric phone number'''
+        
+        post_data = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"NaN",\
+                 "address":"12 New Road, Disneyland"}'
+        response = phonebook.app.request("/", method='POST', data=post_data)
+        self.assertEqual(response.status, "400 Bad Request")
+        self.assertEqual(response.data, phonebook.response_strings['invalid_number'])
+        
+
 
     def test_create_invalid_json(self):
         '''Test that 400 Bad request is returned without valid json in the POST request'''
