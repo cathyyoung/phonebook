@@ -10,7 +10,6 @@ class TestPhonebook(unittest.TestCase):
     def setUp(self):
         '''Clear data from the db at start of each test'''
         db.query('DELETE FROM phonebook')
-
     
     def test_create(self):
         '''Test that a POST request with phonebook data results in the entry being added to the phonebook'''
@@ -35,7 +34,6 @@ class TestPhonebook(unittest.TestCase):
 
         new_num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
 
-        # assert 2 mice, one mickey, one minnie, one address,
         mickey = db.query('''SELECT firstname, surname, number, address FROM phonebook
                             WHERE surname = "Mouse" AND firstname = "Mickey"''')
         mickey = mickey[0]
@@ -51,6 +49,30 @@ class TestPhonebook(unittest.TestCase):
         self.assertEqual(minnie.surname, "Mouse")
         self.assertEqual(minnie.number, "02045679920")
         self.assertEqual(minnie.address, "12 New Road, Disneyland")
+
+    def test_create_no_duplicate(self):
+        '''Test that you cannot add multiple rows with the same firstname and lastname,
+        as we're assuming that firstname+lastname forms a primary key'''
+        m1 = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"02045679920",\
+                 "address":"12 New Road, Disneyland"}'
+        m2 = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"11111034",\
+                 "address":"13 Other Road, Disneyland"}'
+
+        # Add first one
+        response = phonebook.app.request("/", method='POST', data=m1)
+        self.assertEqual(response.status, "201 Created")
+
+        # Add second one
+        response = phonebook.app.request("/", method='POST', data=m2)
+        self.assertEqual(response.status, "409 Conflict")
+
+        # And only one row in db
+        num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
+        self.assertEqual(num_rows, 1)
 
     def test_create_missing_fields(self):
         '''Test that errors are thrown and appropriate HTTP status code
@@ -111,7 +133,6 @@ class TestPhonebook(unittest.TestCase):
         response = phonebook.app.request("/", method='POST', data=post_data)
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['invalid_number'])
-        
 
 
     def test_create_invalid_json(self):
