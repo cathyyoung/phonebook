@@ -20,12 +20,21 @@ class Phonebook:
         return json_response
 
     def POST(self):
-        data = json.loads(web.data())
+        try:
+            data = json.loads(web.data())
+        except ValueError:
+            # Check for invalid json
+            raise web.badrequest(response_strings['invalid_json'])
 
         # Make sure all required attributes are present
         for required_attr in ('firstname','surname','number'):
             if not data.has_key(required_attr):
-                raise web.badrequest("Attributes firstname, surname, and number must be present")
+                raise web.badrequest(response_strings['missing_field'])
+
+        # Make sure there aren't any extra, unrecognised fields
+        for key in data:
+            if key not in ('firstname','surname','number','address'):
+                raise web.badrequest(response_strings['unrecognized_field'])
         
         fn = data['firstname']
         sn = data['surname']
@@ -39,8 +48,17 @@ class Phonebook:
                       number=nm,
                       address=addr)
         # Return 201 Created
-        return web.created("Successfully added %s %s" % (fn, sn))
+        return web.created(response_strings['add_success'] % (fn, sn))
 
+
+
+response_strings = {
+    'invalid_json':"Invalid JSON data",
+    'unrecognized_field':"Unrecognized field in POST data. \
+        Request data must include firstname, surname, number, and optionally address.",
+    'missing_field':"Attributes firstname, surname, and number must be present",
+    'add_success':"Successfully added %s %s"
+    }
 
 if __name__ == "__main__":
     app.run()

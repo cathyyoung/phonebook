@@ -8,7 +8,7 @@ db = phonebook.db
 class TestPhonebook(unittest.TestCase):
     
     def setUp(self):
-        # Reset database per test
+        '''Clear data from the db at start of each test'''
         db.query('DELETE FROM phonebook')
 
     
@@ -88,14 +88,39 @@ class TestPhonebook(unittest.TestCase):
         num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
         self.assertEqual(num_rows, 1)
 
+    def test_create_bad_data(self):
+        '''Test attempt to create with invalid POST data'''
+
+        # unrecognised field
+        post_data = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"02045679920",\
+                 "address":"12 New Road, Disneyland",\
+                 "invalid_field": "Will not be recognized"}'
+        response = phonebook.app.request("/", method='POST', data=post_data)
+        self.assertEqual(response.status, "400 Bad Request")
+        self.assertEqual(response.data, phonebook.response_strings['unrecognized_field'])
+
+
+    def test_create_invalid_json(self):
+        '''Test that 400 Bad request is returned without valid json in the POST request'''
+        response = phonebook.app.request("/", method='POST', data=None)
+        self.assertEqual(response.status, "400 Bad Request")
+        self.assertEqual(response.data, phonebook.response_strings['invalid_json'])
+
+        response = phonebook.app.request("/", method='POST', data="It's expecting JSON really")
+        self.assertEqual(response.status, "400 Bad Request")
+        self.assertEqual(response.data, phonebook.response_strings['invalid_json'])
+        
+
     def test_list_all_empty(self):
         '''Test the response for an empty phonebook'''
         
         response = phonebook.app.request("/", method='GET')
         
-        # Fails if invalid json
+        # Fails if invalid json is returned
         json_resp = self.json_data(response.data)
-
+        # Return empty json object
         self.assertEqual(len(json_resp), 0)
 
     def test_list_all(self):
