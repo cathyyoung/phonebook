@@ -207,8 +207,7 @@ class TestPhonebook(unittest.TestCase):
                  "address":"13 Other Road, Disneyland"}'
         # Make update request with new number and address
         response = phonebook.app.request(update_uri, method='PUT', data=update)
-        self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'])
+        self.assertEqual(response.status, "204 No Content")
 
         minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = list(minnie)
@@ -247,8 +246,7 @@ class TestPhonebook(unittest.TestCase):
                  "address":"13 Other Road, Disneyland"}'
         # Make update request to add address
         response = phonebook.app.request(update_uri, method='PUT', data=update)
-        self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'])
+        self.assertEqual(response.status, "204 No Content")
 
         minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = minnie[0]
@@ -272,8 +270,7 @@ class TestPhonebook(unittest.TestCase):
                  "address":""}'
         # Make update request to remove address
         response = phonebook.app.request(update_uri, method='PUT', data=update)
-        self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'])
+        self.assertEqual(response.status, "204 No Content")
         
 
         minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
@@ -390,8 +387,41 @@ class TestPhonebook(unittest.TestCase):
         response = phonebook.app.request(update_uri, method='PUT', data="It's expecting JSON really")
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['invalid_json'])
-        
 
+#############################
+##    Delete (DELETE)      ##
+#############################
+
+    def test_delete_entry(self):
+        '''Test deletion of a given phonebook entry'''
+        original = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"02045679920",\
+                 "address":"12 New Road, Disneyland"}'
+        # Add original entry
+        response = phonebook.app.request("/", method='POST', data=original)
+        delete_uri = self.get_loc(response)
+
+        # Assert one result
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
+        self.assertEqual(len(list(minnie)), 1)
+
+        # Delete
+        response = phonebook.app.request(delete_uri, method='DELETE')
+        self.assertEqual(response.status, "204 No Content")
+
+        # Assert no results
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
+        self.assertEqual(len(list(minnie)), 0)
+
+    def test_delete_not_found(self):
+        '''Test deletion of a non-existent phonebook entry'''
+        
+        response = phonebook.app.request('/10', method='DELETE')
+        self.assertEqual(response.status, "404 Not Found")
+
+
+#####################
 ## Utility methods ##
 #####################
 
