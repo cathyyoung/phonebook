@@ -7,8 +7,8 @@ db = phonebook.db
 
 class TestPhonebook(unittest.TestCase):
     
-    def setUp(self):
-        '''Clear data from the db at start of each test'''
+    def tearDown(self):
+        '''Clear data from the db at end of each test'''
         db.query('DELETE FROM phonebook')
 
 #############################
@@ -27,6 +27,10 @@ class TestPhonebook(unittest.TestCase):
         num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
         self.assertEqual(num_rows, 1)
 
+        # check a URI for the new entity was returned
+        # This method fails the test if no Location header is found in the response 
+        self.assertRegexpMatches(self.get_loc(response), '/\d+')
+
         td2 = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
                  "number":"02045679920",\
@@ -38,47 +42,20 @@ class TestPhonebook(unittest.TestCase):
 
         new_num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
 
-        mickey = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Mickey"''')
+        mickey = db.where('phonebook',surname='Mouse',firstname='Mickey')
         mickey = mickey[0]
         self.assertEqual(mickey.firstname, "Mickey")
         self.assertEqual(mickey.surname, "Mouse")
         self.assertEqual(mickey.number, "01234567789")
         self.assertEqual(mickey.address, None)
 
-        minnie = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Minnie"''')
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = minnie[0]
         self.assertEqual(minnie.firstname, "Minnie")
         self.assertEqual(minnie.surname, "Mouse")
         self.assertEqual(minnie.number, "02045679920")
         self.assertEqual(minnie.address, "12 New Road, Disneyland")
 
-    def test_create_no_duplicate(self):
-        '''Test that you cannot add multiple rows with the same firstname and lastname,
-        as we're assuming that firstname+lastname forms a primary key'''
-        
-        m1 = '{"surname":"Mouse",\
-                 "firstname":"Minnie",\
-                 "number":"02045679920",\
-                 "address":"12 New Road, Disneyland"}'
-        m2 = '{"surname":"Mouse",\
-                 "firstname":"Minnie",\
-                 "number":"11111034",\
-                 "address":"13 Other Road, Disneyland"}'
-
-        # Add first one
-        response = phonebook.app.request("/", method='POST', data=m1)
-        self.assertEqual(response.status, "201 Created")
-
-        # Add second one
-        response = phonebook.app.request("/", method='POST', data=m2)
-        # Returns 409 Conflict as already exists
-        self.assertEqual(response.status, "409 Conflict")
-
-        # And only one row in db
-        num_rows = db.query("SELECT COUNT(*) AS entries FROM phonebook")[0].entries
-        self.assertEqual(num_rows, 1)
 
     def test_create_missing_fields(self):
         '''Test that errors are thrown and appropriate HTTP status code
@@ -210,7 +187,7 @@ class TestPhonebook(unittest.TestCase):
 #############################
 ##      Update (PUT)       ##
 #############################
-
+        
     def test_update(self):
         '''Add a full entry to the phonebook, then update it with new number and address'''
         
@@ -221,17 +198,19 @@ class TestPhonebook(unittest.TestCase):
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
 
+        # The 201 Created response returns the URI of the entry resource
+        update_uri = self.get_loc(response)
+
         update = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
                  "number":"11111034",\
                  "address":"13 Other Road, Disneyland"}'
         # Make update request with new number and address
-        response = phonebook.app.request("/", method='PUT', data=update)
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
         self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'] % ('Minnie','Mouse'))
+        self.assertEqual(response.data, phonebook.response_strings['update_success'])
 
-        minnie = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Minnie"''')
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = list(minnie)
         # Still only one matching row
         self.assertEqual(len(minnie), 1)
@@ -240,6 +219,17 @@ class TestPhonebook(unittest.TestCase):
         # With new number and address
         self.assertEqual(minnie.number, "11111034")
         self.assertEqual(minnie.address, "13 Other Road, Disneyland")
+
+    def test_update_no_resource_found(self):
+        '''Test attempt to update a non-existent resource'''
+
+        update = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "address":"13 Other Road, Disneyland"}'
+        # Make update request to add address
+        response = phonebook.app.request("/10", method='PUT', data=update)
+        self.assertEqual(response.status, "404 Not Found")
+
 
     def test_update_add_address(self):
         '''Test create an entry without an address, then add the address via update'''
@@ -250,19 +240,21 @@ class TestPhonebook(unittest.TestCase):
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
 
+        update_uri = self.get_loc(response)
+
         update = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
                  "address":"13 Other Road, Disneyland"}'
         # Make update request to add address
-        response = phonebook.app.request("/", method='PUT', data=update)
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
         self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'] % ('Minnie','Mouse'))
+        self.assertEqual(response.data, phonebook.response_strings['update_success'])
 
-        minnie = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Minnie"''')
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = minnie[0]
         # With new address
         self.assertEqual(minnie.address, "13 Other Road, Disneyland")
+
 
     def test_update_remove_address(self):
         '''Test create an entry with an address, then remove the address via update'''
@@ -273,24 +265,26 @@ class TestPhonebook(unittest.TestCase):
                  "address":"13 Other Road, Disneyland"}'
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
 
         update = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
                  "address":""}'
         # Make update request to remove address
-        response = phonebook.app.request("/", method='PUT', data=update)
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
         self.assertEqual(response.status, "200 OK")
-        self.assertEqual(response.data, phonebook.response_strings['update_success'] % ('Minnie','Mouse'))
+        self.assertEqual(response.data, phonebook.response_strings['update_success'])
         
 
-        minnie = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Minnie"''')
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = list(minnie)
+        # Still one result
         self.assertEqual(len(minnie), 1)
         minnie = minnie[0]
         
         # Having removed the address
         self.assertEqual(minnie.address, '')
+
 
     def test_update_no_blank_number(self):
         '''Test that you cannot pass an empty string number to remove it from the entry'''
@@ -301,24 +295,24 @@ class TestPhonebook(unittest.TestCase):
                  "address":"13 Other Road, Disneyland"}'
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
 
         update = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
                  "number":""}'
         # Make update request to remove number
-        response = phonebook.app.request("/", method='PUT', data=update)
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['invalid_number'])
 
-        minnie = db.query('''SELECT firstname, surname, number, address FROM phonebook
-                            WHERE surname = "Mouse" AND firstname = "Minnie"''')
+        minnie = db.where('phonebook',surname='Mouse',firstname='Minnie')
         minnie = list(minnie)[0]
         # Hasn't updated the number to remove it
         self.assertEqual(minnie.number, "02045679920")
-        
 
-    def test_update_no_firstname(self):
-        '''Test to show that firstname (and surname) is required for update'''
+
+    def test_update_firstname(self):
+        '''Test to update firstname'''
         
         original = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
@@ -326,14 +320,18 @@ class TestPhonebook(unittest.TestCase):
                  "address":"12 New Road, Disneyland"}'
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
 
-        update = '{"surname":"Mouse",\
-                 "number":"11111034",\
-                 "address":"13 Other Road, Disneyland"}'
+        update = '{"firstname":"Minerva"}'
         # Make update request with new number and address
-        response = phonebook.app.request("/", method='PUT', data=update)
-        self.assertEqual(response.status, "400 Bad Request")
-        self.assertEqual(response.data, phonebook.response_strings['missing_field'])
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
+
+        minerva = db.where('phonebook',id=update_uri[1:])
+        minerva = minerva[0]
+        # With new firstname
+        self.assertEqual(minerva.firstname, "Minerva")
+        
+
 
     def test_update_no_surname(self):
         '''Test to show that surname (and firstname) is required for update'''
@@ -344,18 +342,20 @@ class TestPhonebook(unittest.TestCase):
                  "address":"12 New Road, Disneyland"}'
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
 
-        update = '{"firstname":"Minnie",\
-                 "number":"11111034",\
-                 "address":"13 Other Road, Disneyland"}'
+        update = '{"surname":"Duck"}'
         # Make update request with new number and address
-        response = phonebook.app.request("/", method='PUT', data=update)
-        self.assertEqual(response.status, "400 Bad Request")
-        self.assertEqual(response.data, phonebook.response_strings['missing_field'])
-        
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
 
-    def test_update_num_or_addr_required(self):
-        '''Test that (at least) either number or address field is required for update'''
+        minnie = db.where('phonebook',id=update_uri[1:])
+        minnie = minnie[0]
+        # With new surname
+        self.assertEqual(minnie.surname, "Duck")
+
+
+    def test_update_one_field_required(self):
+        '''Test that at least one field is present in update'''
 
         original = '{"surname":"Mouse",\
                  "firstname":"Minnie",\
@@ -363,22 +363,31 @@ class TestPhonebook(unittest.TestCase):
                  "address":"12 New Road, Disneyland"}'
         # Add original entry
         response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
 
-        update = '{"surname":"Mouse",\
-                  "firstname":"Minnie"}'
+        update = '{}'
         # Make update request with new number and address
-        response = phonebook.app.request("/", method='PUT', data=update)
+        response = phonebook.app.request(update_uri, method='PUT', data=update)
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['update_fields'])
 
+
     def test_update_invalid_json(self):
         '''Test that 400 Bad request is returned without valid json in the PUT request'''
+
+        original = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"02045679920",\
+                 "address":"12 New Road, Disneyland"}'
+        # Add original entry
+        response = phonebook.app.request("/", method='POST', data=original)
+        update_uri = self.get_loc(response)
         
-        response = phonebook.app.request("/", method='PUT', data=None)
+        response = phonebook.app.request(update_uri, method='PUT', data=None)
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['invalid_json'])
 
-        response = phonebook.app.request("/", method='PUT', data="It's expecting JSON really")
+        response = phonebook.app.request(update_uri, method='PUT', data="It's expecting JSON really")
         self.assertEqual(response.status, "400 Bad Request")
         self.assertEqual(response.data, phonebook.response_strings['invalid_json'])
         
@@ -393,6 +402,11 @@ class TestPhonebook(unittest.TestCase):
         except ValueError:
             # not valid json
             self.fail("Received invalid JSON response")
+
+    def get_loc(self, response):
+        if not 'Location' in response.headers.keys():
+            self.fail('No Location header found in response headers')
+        return response.headers['Location']
        
         
 
