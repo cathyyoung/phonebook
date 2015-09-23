@@ -3,7 +3,8 @@ import web, json, re
 db = web.database(dbn="sqlite", db="phonebook.db")
 
 urls = ("/", "Phonebook",
-        "/([0-9]+)", "Entry")
+        "/([0-9]+)", "Entry",
+        "/([^0-9]+)", "Search")
 app = web.application(urls, globals())
    
 class Phonebook:
@@ -95,13 +96,25 @@ class Entry:
                   vars={'id':id})
         return web.nocontent()
 
+class Search:
+    def GET(self, surname):
+        '''Search the phonebook by surname. Returns JSON list of results'''
 
+        results = []
+        q = db.query('''SELECT id, firstname, surname, number, address
+                              FROM phonebook WHERE surname=$surname''',
+                           vars={'surname':surname})
+        for row in q:
+            results.append({'id':row.id,
+                            'firstname':row.firstname,
+                            'surname':row.surname,
+                            'number':row.number,
+                            'address':row.address})
+        return json.dumps(results)
+
+#####################
 ## Utility methods ##
 #####################
-
-def make_json_response(**kwargs):
-    json_response = json.dumps(kwargs)
-    return json_response
 
 def entry_exists(entry_id):
     result = db.where('phonebook',id=entry_id)

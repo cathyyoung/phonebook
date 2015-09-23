@@ -421,6 +421,68 @@ class TestPhonebook(unittest.TestCase):
         self.assertEqual(response.status, "404 Not Found")
 
 
+#############################
+##      Search (GET)       ##
+#############################
+
+    def test_search_one(self):
+        '''Test retrieval of one phonebook entry by surname'''
+        original = '{"surname":"Mouse",\
+                 "firstname":"Minnie",\
+                 "number":"02045679920",\
+                 "address":"12 New Road, Disneyland"}'
+        # Add original entry
+        response = phonebook.app.request("/", method='POST', data=original)
+
+        # Search
+        response = phonebook.app.request('/%s' % 'Mouse', method='GET')
+        self.assertEqual(response.status, "200 OK")
+
+        results = self.json_data(response.data)
+        self.assertEqual(len(results), 1)
+
+        minnie = results[0]
+        self.assertEqual(minnie['firstname'], "Minnie")
+        self.assertEqual(minnie['surname'], "Mouse")
+
+    def test_search_many(self):
+        '''Test retrieval of multiple phonebook entries by surname'''
+        
+        data = ['{"surname":"Mouse","firstname":"Mickey","number":"01234567789"}',
+                '{"surname":"Mouse","firstname":"Minnie","number":"02045679920","address":"12 New Road, Disneyland"}',
+                '{"surname":"Duck","firstname":"Donald","number":"028384752","address":"123a Main Street, Disneyland"}',
+                '{"surname":"Duck","firstname":"Daisy","number":"028384752","address":"123a Main Street, Disneyland"}']
+
+        # add data to phonebook
+        for entry in data:
+            response = phonebook.app.request("/", method='POST', data=entry)
+
+        # Check they've been added to database
+        entries = db.query("SELECT * FROM phonebook")
+        self.assertEqual(len(list(entries)), 4)
+
+
+        # Search
+        response = phonebook.app.request('/%s' % 'Mouse', method='GET')
+        self.assertEqual(response.status, "200 OK")
+
+        # 2 results
+        results = self.json_data(response.data)
+        self.assertEqual(len(results), 2)
+
+
+    def test_search_no_results(self):
+        '''Test empty response when no results found'''
+        
+        # Search
+        response = phonebook.app.request('/%s' % 'Mouse', method='GET')
+        self.assertEqual(response.status, "200 OK")
+
+        # 0 results, empty object
+        results = self.json_data(response.data)
+        self.assertEqual(len(results), 0)
+
+
 #####################
 ## Utility methods ##
 #####################
