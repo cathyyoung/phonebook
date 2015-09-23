@@ -3,7 +3,7 @@ import web, json, re
 db = web.database(dbn="sqlite", db="phonebook.db")
 
 urls = ("/", "Phonebook",
-        "/(\d+)", "Entry")
+        "/([0-9]+)", "Entry")
 app = web.application(urls, globals())
    
 class Phonebook:
@@ -12,9 +12,10 @@ class Phonebook:
         '''Returns all entries in phonebook'''
         
         results = []
-        q = db.query("SELECT firstname, surname, number, address FROM phonebook")
+        q = db.query("SELECT id, firstname, surname, number, address FROM phonebook")
         for row in q:
-            results.append({'firstname':row.firstname,
+            results.append({'id':row.id,
+                            'firstname':row.firstname,
                             'surname':row.surname,
                             'number':row.number,
                             'address':row.address})
@@ -81,7 +82,18 @@ class Entry:
         res = db.update('phonebook', where="id=$id",
                         vars={'id':id},
                         **data)
-        return response_strings['update_success']
+        return web.nocontent()
+
+    def DELETE(self, id):
+        '''Remove an existing entry in the phonebook. URI must match /<id>
+        of an existing entry'''
+
+        if not entry_exists(id):
+            raise web.notfound("No matching phonebook entry with id %s" % id)
+
+        db.delete('phonebook', where="id=$id",
+                  vars={'id':id})
+        return web.nocontent()
 
 
 ## Utility methods ##
@@ -150,8 +162,7 @@ response_strings = {
     'invalid_number':"Phone number must be 6-15 digits long, and contain only numbers, -, # or spaces.",
     'empty_string':"Field must not be null or an empty string.",
     'entry_exists':"Could not create new entry for %s %s as one already exists.",
-    'update_fields':"Update PUT request must contain at least one field.",
-    'update_success':"Successfully updated %s %s"
+    'update_fields':"Update PUT request must contain at least one field."
     }
 
 if __name__ == "__main__":
